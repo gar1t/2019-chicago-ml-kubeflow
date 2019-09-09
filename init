@@ -1,0 +1,176 @@
+#!/usr/bin/env python
+
+import argparse
+import json
+import subprocess
+import sys
+import time
+import webbrowser
+
+from collections import namedtuple
+
+ISTIO_GATEWAY_PORT = 31380
+
+def main(args):
+    if args.watch_status:
+        watch_status(args)
+    elif args.open:
+        open_dashboard(args)
+    elif args.delete:
+        delete_env(args)
+    else:
+        setup_env(args)
+
+def watch_status(args):
+    try:
+        watch_status_loop(args)
+    except KeyboardInterrupt:
+        pass
+
+def watch_status_loop(args):
+    while True:
+        out = vm_run_capture("/snap/bin/kubectl -n kubeflow get po", args)
+        print("\033c%s" % out)
+        time.sleep(5)
+
+def delete_env(args):
+    run("multipass delete %s" % args.env_name)
+    run("multipass purge")
+
+def setup_env(args):
+    ensure_multipass()
+    init_vm(args)
+    if not args.skip_k8s:
+        setup_k8s(args)
+    if not args.skip_kf:
+        setup_kf(args)
+    if not args.no_open:
+        open_dashboard(args)
+
+def ensure_multipass():
+    run("apt install -y snapd")
+    run("sudo snap install multipass --beta --classic")
+
+def init_vm(args):
+    run(
+        "multipass launch --name {name} --cpus {cpus} "
+        "--mem {mem}GB --disk {disk}GB".format(
+            name=args.env_name,
+            cpus=args.env_cpus,
+            mem=args.env_mem,
+            disk=args.env_disk,
+        ),
+        allowed=(0, 2))
+
+def setup_k8s(args):
+    vm_run_script("init-k8s", args)
+
+def setup_kf(args):
+    vm_run_script("init-kf", args)
+
+def open_dashboard(args):
+    host = vm_host(args)
+    port = ISTIO_GATEWAY_PORT
+    webbrowser.open("http://{host}:{port}".format(host=host, port=port))
+    time.sleep(1)
+    print("")
+
+def vm_host(args):
+    out = subprocess.check_output("multipass list --format json", shell=True)
+    for inst in json.loads(out)["list"]:
+        if inst["name"] == args.env_name:
+            return inst["ipv4"][0]
+    assert False, out
+
+###################################################################
+# Run support
+###################################################################
+
+def run(cmd, allowed=(0,)):
+    try:
+        subprocess.check_call(cmd, shell=True)
+    except subprocess.CalledProcessError as e:
+        if e.returncode not in allowed:
+            sys.stderr.write(
+                "{prog}: command failed ({returncode}): {cmd}\n".format(
+                    prog=sys.argv[0],
+                    returncode=e.returncode,
+                    cmd=cmd,
+                ))
+            sys.exit(e.returncode)
+
+def run_capture(cmd):
+    return subprocess.check_output(cmd, shell=True)
+
+def vm_run(cmd, args):
+    run(vm_cmd(cmd, args))
+
+def vm_cmd(cmd, args):
+    return "multipass exec {name} -- {cmd}".format(
+        name=args.env_name,
+        cmd=cmd,
+    )
+
+def vm_run_capture(cmd, args):
+    return run_capture(vm_cmd(cmd, args))
+
+def vm_run_script(script, args):
+    run(
+        "multipass transfer {script} {name}:{script}".format(
+            script=script,
+            name=args.env_name,
+        ))
+    vm_run("bash {script}".format(script=script), args)
+
+def parse_args():
+    p = argparse.ArgumentParser()
+    D = namedtuple(
+        "config", ("name", "cpus", "mem", "disk"))(
+            name="kubeflow",
+            cpus=4,
+            mem=12,
+            disk=20,
+        )
+    p.add_argument(
+        "--env-name", default=D.name,
+        help="env name (%s)" % D.name)
+    p.add_argument(
+        "--env-cpus", type=int, default=D.cpus,
+        help="number of CPUs (%s)" % D.cpus)
+    p.add_argument(
+        "--env-mem", type=int, default=12,
+        help="number of CPUs (%s)" % D.cpus)
+    p.add_argument(
+        "--env-disk", type=int, default=40,
+        help="number of CPUs (%s)" % D.disk)
+    p.add_argument(
+        "--watch-status", action="store_true",
+        help="watch init status")
+    p.add_argument(
+        "--open", action="store_true",
+        help="open dashboard")
+    p.add_argument(
+        "--delete", action="store_true",
+        help="delete env")
+    p.add_argument(
+        "--skip-k8s", action="store_true",
+        help="skip Kubernetes setup")
+    p.add_argument(
+        "--skip-kf", action="store_true",
+        help="skip Kubeflow setup")
+    p.add_argument(
+        "--no-open", action="store_true",
+        help="don't open the Kubeflow dashboard")
+    return p.parse_args()
+
+if __name__ == "__main__":
+    main(parse_args())
+
+"""
+
+    multipass info kubeflow | grep IPv4
+
+Open this URL:
+
+    http://HOST:31380
+"""

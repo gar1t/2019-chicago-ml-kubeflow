@@ -1,0 +1,31 @@
+#-*-shell-script-*-
+
+set -ex
+
+. /etc/profile.d/apps-bin-path.sh
+
+kf_ver=0.6.2
+kf_config_path=v0.6-branch/bootstrap/config/kfctl_k8s_istio.0.6.2.yaml
+
+#kf_ver=0.6.1
+#kf_config_path=v0.6.1/bootstrap/config/kfctl_k8s_istio.yaml
+
+install-kfctl() {
+    if [ ! -e kfctl_v${kf_ver}_linux.tar.gz ]; then
+        wget https://github.com/kubeflow/kubeflow/releases/download/v${kf_ver}/kfctl_v${kf_ver}_linux.tar.gz
+    fi
+    if [ ! -e kfctl ]; then
+        tar xf kfctl_v${kf_ver}_linux.tar.gz
+    fi
+    sudo mv kfctl /snap/bin/
+}
+
+setup-kubeflow() {
+    rm -f kubeflow/app.yaml
+    kfctl init kubeflow --config=https://raw.githubusercontent.com/kubeflow/kubeflow/${kf_config_path}
+    (cd kubeflow && kfctl generate all -V)
+    (cd kubeflow && sudo kfctl apply all -V)
+}
+
+install-kfctl
+setup-kubeflow
