@@ -4,9 +4,9 @@ set -ex
 
 . /etc/profile.d/apps-bin-path.sh
 
-snap_channel=1.13/stable
+#snap_channel=1.13/stable
 
-#snap_channel=
+snap_channel=
 
 sudo snap install microk8s --classic --channel=${snap_channel}
 

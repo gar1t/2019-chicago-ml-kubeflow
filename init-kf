@@ -24,7 +24,7 @@ setup-kubeflow() {
     rm -f kubeflow/app.yaml
     kfctl init kubeflow --config=https://raw.githubusercontent.com/kubeflow/kubeflow/${kf_config_path}
     (cd kubeflow && kfctl generate all -V)
-    (cd kubeflow && sudo kfctl apply all -V)
+    (cd kubeflow && sudo kfctl apply all -V 2>&1 | tee apply.log)
 }
 
 install-kfctl

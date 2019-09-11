@@ -29,7 +29,7 @@ def watch_status(args):
 
 def watch_status_loop(args):
     while True:
-        out = vm_run_capture("/snap/bin/kubectl -n kubeflow get po", args)
+        out = vm_run_capture("sudo kubectl -n kubeflow get po", args)
         print("\033c%s" % out)
         time.sleep(5)
 
@@ -99,8 +99,12 @@ def run(cmd, allowed=(0,)):
                 ))
             sys.exit(e.returncode)
 
-def run_capture(cmd):
-    return subprocess.check_output(cmd, shell=True)
+def run_capture(cmd, allowed=(0,)):
+    try:
+        return subprocess.check_output(cmd, shell=True)
+    except subprocess.CalledProcessError as e:
+        sys.stderr.write(e.output)
+        sys.exit(e.returncode)
 
 def vm_run(cmd, args):
     run(vm_cmd(cmd, args))
